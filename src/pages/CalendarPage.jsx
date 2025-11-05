@@ -69,13 +69,11 @@ export default function CalendarPage() {
     useEffect(() => {
         getServices().then(res => setServices(Array.isArray(res.data) ? res.data : [])).catch(() => setServices([]));
         getEmployees().then(res => setEmployees(Array.isArray(res.data) ? res.data : [])).catch(() => setEmployees([]));
-        refreshEvents();
     }, []);
 
     const refreshEvents = async (start, end) => {
         // Prevent concurrent fetches but allow queuing
         if (isFetching) {
-            console.log('Already fetching, skipping concurrent request');
             return;
         }
         setIsFetching(true);
@@ -85,8 +83,6 @@ export default function CalendarPage() {
             const e = end || (visibleRange && visibleRange.end) || dayjs();
             const from = dayjs(s).format("YYYY-MM-DD");
             const to = dayjs(e).format("YYYY-MM-DD");
-            
-            console.log('Fetching appointments from', from, 'to', to);
             const { data } = await getAppointments(from, to);
             const dataArray = Array.isArray(data) ? data : [];
             const mapped = dataArray.map(a => ({
@@ -127,14 +123,15 @@ export default function CalendarPage() {
         const currentRangeKey = visibleRange ? `${visibleRange.start}-${visibleRange.end}` : null;
         
         // Only skip if exact same range (but allow view changes)
-        if (currentRangeKey === rangeKey && !isFetching) {
-            console.log('Skipping identical range:', rangeKey);
+        if (currentRangeKey === rangeKey) {
             return;
         }
         
-        console.log('Fetching new range:', rangeKey, 'from:', currentRangeKey);
-        setVisibleRange({ start: startStr, end: endStr });
-        refreshEvents(info.start, info.end);
+        // Use setTimeout to avoid state updates during render
+        setTimeout(() => {
+            setVisibleRange({ start: startStr, end: endStr });
+            refreshEvents(info.start, info.end);
+        }, 0);
     };
 
     const handleDateSelect = (info) => {
