@@ -82,7 +82,7 @@ export default function CalendarPage() {
                 extendedProps: { ...a }
             }));
             setAllEvents(mapped); // Update allEvents instead of events
-            
+
             // Apply current filter if there's one
             const selectedEmployeeId = localStorage.getItem("employeeId");
             if (selectedEmployeeId) {
