@@ -4,7 +4,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import esLocale from '@fullcalendar/core/locales/es';
+// Removed problematic locale import
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
@@ -277,7 +277,7 @@ export default function CalendarPage() {
                 slotMaxTime="21:00:00"
                 hiddenDays={[0]} // Hide Sundays
                 eventDisplay="block"
-                locale={esLocale} // Set calendar locale to Spanish
+                locale="es" // Set calendar locale to Spanish
                 scrollTime="09:00:00" // Set default scroll position
                 scrollTimeReset={false} // Prevent scroll reset on event changes
                 eventMouseEnter={(info) => {
