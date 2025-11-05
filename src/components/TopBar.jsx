@@ -50,7 +50,7 @@ export default function TopBar() {
     return (
         <AppBar position="static" color="default" elevation={1}>
             <Toolbar sx={{ flexWrap: "wrap", justifyContent: "space-between" }}>
-                <Typography variant="h6" sx={{ fontWeight: "bold" }}>💅 Maniaci</Typography>
+                <Typography variant="h6" sx={{ fontWeight: "bold" }}>💅 Maniaci Estética</Typography>
 
                 <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                     <Select
