@@ -1,0 +1,52 @@
+/* CalendarPage.scss */
+
+.event-content {
+    padding: 2px 4px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    overflow: hidden;
+    color: #fff;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.event-content strong {
+    font-weight: bold;
+}
+
+/* Fix scroll behavior */
+.fc-scroller {
+    scroll-behavior: smooth;
+}
+
+.fc-timegrid-body {
+    scroll-behavior: smooth;
+}
+
+/* Prevent scroll jumping */
+.fc-view-harness {
+    position: relative;
+}
+
+/* Responsive styles for mobile */
+@media (max-width: 768px) {
+    .fc {
+        font-size: 0.8rem;
+    }
+
+    .fc-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .fc-daygrid-day {
+        padding: 5px;
+    }
+
+    .fc-timegrid-slot {
+        height: 40px;
+    }
+
+    .formasdepago {
+        flex-direction: column;
+    }
+}

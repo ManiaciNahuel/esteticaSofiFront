@@ -23,8 +23,15 @@ export default function TopBar() {
     }, []);
 
     const handleEmployeeChange = (e) => {
-        setSelected(e.target.value);
-        localStorage.setItem("employeeId", e.target.value);
+        const selectedEmployeeId = e.target.value;
+        setSelected(selectedEmployeeId);
+        localStorage.setItem("employeeId", selectedEmployeeId);
+
+        // Comunicar el cambio al calendario
+        const event = new CustomEvent("employeeFilterChange", {
+            detail: { employeeId: selectedEmployeeId },
+        });
+        window.dispatchEvent(event);
     };
 
     const handleTabChange = (_, newIndex) => {
@@ -45,7 +52,8 @@ export default function TopBar() {
                         displayEmpty
                         sx={{ minWidth: 150 }}
                     >
-                        <MenuItem value=""><em>Seleccionar profesional</em></MenuItem>
+                        <MenuItem value=""><em>Seleccionar profesional</em>
+                        </MenuItem>
                         {employees.map(e => (
                             <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
                         ))}
@@ -55,13 +63,13 @@ export default function TopBar() {
                         {dayjs(today).format("DD/MM/YYYY")}
                     </Typography>
                 </Box>
-            </Toolbar>
-
             <Tabs value={tabIndex} onChange={handleTabChange} centered>
                 {tabs.map((tab, i) => (
                     <Tab key={i} label={tab.label} />
                 ))}
             </Tabs>
+            </Toolbar>
+
         </AppBar>
     );
 }
