@@ -117,16 +117,16 @@ export default function CalendarPage() {
     const handleDatesSet = (info) => {
         const startStr = info.startStr || (info.start && dayjs(info.start).format('YYYY-MM-DD'));
         const endStr = info.endStr || (info.end && dayjs(info.end).format('YYYY-MM-DD'));
-        
+
         // Create a unique key for this range and view
         const rangeKey = `${startStr}-${endStr}`;
         const currentRangeKey = visibleRange ? `${visibleRange.start}-${visibleRange.end}` : null;
-        
+
         // Only skip if exact same range (but allow view changes)
         if (currentRangeKey === rangeKey) {
             return;
         }
-        
+
         // Use setTimeout to avoid state updates during render
         setTimeout(() => {
             setVisibleRange({ start: startStr, end: endStr });
