@@ -725,7 +725,7 @@ export default function CalendarPage() {
                                     borderRadius: 2,
                                     border: '1px solid',
                                     borderColor: 'rgba(226, 232, 240, 0.8)'
-                                }}>
+                                }} className="nuevopago">
                                     <TextField
                                         select
                                         label="💰 Método"
