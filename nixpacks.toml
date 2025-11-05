@@ -1,0 +1,6 @@
+[phases.build]
+cmds = ["npm install --no-optional", "npm run build"]
+
+[variables]
+NPM_CONFIG_OPTIONAL = "false"
+ROLLUP_NO_NATIVE = "true"
