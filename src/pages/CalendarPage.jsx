@@ -42,7 +42,8 @@ export default function CalendarPage() {
         const fetchAppointments = async () => {
             try {
                 const response = await axios.get("/appointments");
-                const mappedEvents = response.data.map(a => ({
+                const dataArray = Array.isArray(response.data) ? response.data : [];
+                const mappedEvents = dataArray.map(a => ({
                     id: a.id,
                     title: `${a.client_name || "Cliente"} - ${a.service_name}`,
                     start: a.starts_at,
@@ -55,6 +56,8 @@ export default function CalendarPage() {
                 setEvents(mappedEvents); // Initialize visible events
             } catch (error) {
                 console.error("Error fetching appointments:", error);
+                setAllEvents([]);
+                setEvents([]);
             }
         };
 
@@ -62,8 +65,8 @@ export default function CalendarPage() {
     }, []);
 
     useEffect(() => {
-        getServices().then(res => setServices(res.data));
-        getEmployees().then(res => setEmployees(res.data));
+        getServices().then(res => setServices(Array.isArray(res.data) ? res.data : [])).catch(() => setServices([]));
+        getEmployees().then(res => setEmployees(Array.isArray(res.data) ? res.data : [])).catch(() => setEmployees([]));
         refreshEvents();
     }, []);
 
@@ -72,7 +75,8 @@ export default function CalendarPage() {
             const from = dayjs(start).format("YYYY-MM-DD");
             const to = dayjs(end).format("YYYY-MM-DD");
             const { data } = await getAppointments(from, to);
-            const mapped = data.map(a => ({
+            const dataArray = Array.isArray(data) ? data : [];
+            const mapped = dataArray.map(a => ({
                 id: a.id,
                 title: `${a.client_name || "Cliente"} - ${a.service_name}`,
                 start: a.starts_at,
@@ -93,6 +97,8 @@ export default function CalendarPage() {
             }
         } catch (error) {
             console.error("Error fetching events:", error);
+            setAllEvents([]);
+            setEvents([]);
         }
     };
 
