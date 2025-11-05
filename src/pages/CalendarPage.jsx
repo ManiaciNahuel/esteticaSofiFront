@@ -22,6 +22,8 @@ export default function CalendarPage() {
     const [allEvents, setAllEvents] = useState([]); // Store all events
     const [services, setServices] = useState([]);
     const [employees, setEmployees] = useState([]);
+    const [visibleRange, setVisibleRange] = useState(null);
+    const [isFetching, setIsFetching] = useState(false);
     const [open, setOpen] = useState(false);
     const [payments, setPayments] = useState([]);
     const [newPayment, setNewPayment] = useState({});
@@ -71,9 +73,15 @@ export default function CalendarPage() {
     }, []);
 
     const refreshEvents = async (start, end) => {
+        // Prevent concurrent or repeated fetches
+        if (isFetching) return;
+        setIsFetching(true);
         try {
-            const from = dayjs(start).format("YYYY-MM-DD");
-            const to = dayjs(end).format("YYYY-MM-DD");
+            // Prefer passed start/end, fallback to visibleRange, fallback to today
+            const s = start || (visibleRange && visibleRange.start) || dayjs();
+            const e = end || (visibleRange && visibleRange.end) || dayjs();
+            const from = dayjs(s).format("YYYY-MM-DD");
+            const to = dayjs(e).format("YYYY-MM-DD");
             const { data } = await getAppointments(from, to);
             const dataArray = Array.isArray(data) ? data : [];
             const mapped = dataArray.map(a => ({
@@ -99,11 +107,18 @@ export default function CalendarPage() {
             console.error("Error fetching events:", error);
             setAllEvents([]);
             setEvents([]);
+        } finally {
+            setIsFetching(false);
         }
     };
 
-    // Update events when the visible range changes
+    // Update events when the visible range changes (guard against repeated identical ranges)
     const handleDatesSet = (info) => {
+        const startStr = info.startStr || (info.start && dayjs(info.start).format('YYYY-MM-DD'));
+        const endStr = info.endStr || (info.end && dayjs(info.end).format('YYYY-MM-DD'));
+        // If range didn't change, skip
+        if (visibleRange && visibleRange.start === startStr && visibleRange.end === endStr) return;
+        setVisibleRange({ start: startStr, end: endStr });
         refreshEvents(info.start, info.end);
     };
 
