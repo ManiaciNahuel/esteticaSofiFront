@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import axios from "../api/axios";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import esLocale from '@fullcalendar/core/locales/es';
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
@@ -12,10 +14,12 @@ import { getEmployees } from "../api/employees";
 import { createPayments, getPayments } from "../api/payments";
 import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import './CalendarPage.scss'; // Import SCSS styles
 
 
 export default function CalendarPage() {
     const [events, setEvents] = useState([]);
+    const [allEvents, setAllEvents] = useState([]); // Store all events
     const [services, setServices] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [open, setOpen] = useState(false);
@@ -33,26 +37,68 @@ export default function CalendarPage() {
         final_duration_minutes: "",
     });
 
+    // Load appointments when the component mounts
+    useEffect(() => {
+        const fetchAppointments = async () => {
+            try {
+                const response = await axios.get("/appointments");
+                const mappedEvents = response.data.map(a => ({
+                    id: a.id,
+                    title: `${a.client_name || "Cliente"} - ${a.service_name}`,
+                    start: a.starts_at,
+                    end: a.ends_at,
+                    backgroundColor: a.employee_color || "#f48fb1",
+                    borderColor: a.employee_color || "#f48fb1",
+                    extendedProps: { ...a }
+                }));
+                setAllEvents(mappedEvents); // Store all events
+                setEvents(mappedEvents); // Initialize visible events
+            } catch (error) {
+                console.error("Error fetching appointments:", error);
+            }
+        };
+
+        fetchAppointments();
+    }, []);
+
     useEffect(() => {
         getServices().then(res => setServices(res.data));
         getEmployees().then(res => setEmployees(res.data));
         refreshEvents();
     }, []);
 
-    const refreshEvents = async () => {
-        const from = dayjs().startOf("month").format("YYYY-MM-DD");
-        const to = dayjs().endOf("month").format("YYYY-MM-DD");
-        const { data } = await getAppointments(from, to);
-        const mapped = data.map(a => ({
-            id: a.id,
-            title: `${a.client_name || "Cliente"} - ${a.service_name}`,
-            start: a.starts_at,
-            end: a.ends_at,
-            backgroundColor: a.employee_color || "#f48fb1",
-            borderColor: a.employee_color || "#f48fb1",
-            extendedProps: { ...a }
-        }));
-        setEvents(mapped);
+    const refreshEvents = async (start, end) => {
+        try {
+            const from = dayjs(start).format("YYYY-MM-DD");
+            const to = dayjs(end).format("YYYY-MM-DD");
+            const { data } = await getAppointments(from, to);
+            const mapped = data.map(a => ({
+                id: a.id,
+                title: `${a.client_name || "Cliente"} - ${a.service_name}`,
+                start: a.starts_at,
+                end: a.ends_at,
+                backgroundColor: a.employee_color || "#f48fb1",
+                borderColor: a.employee_color || "#f48fb1",
+                extendedProps: { ...a }
+            }));
+            setAllEvents(mapped); // Update allEvents instead of events
+            
+            // Apply current filter if there's one
+            const selectedEmployeeId = localStorage.getItem("employeeId");
+            if (selectedEmployeeId) {
+                const filteredEvents = mapped.filter(event => event.extendedProps.employee_id === Number(selectedEmployeeId));
+                setEvents(filteredEvents);
+            } else {
+                setEvents(mapped);
+            }
+        } catch (error) {
+            console.error("Error fetching events:", error);
+        }
+    };
+
+    // Update events when the visible range changes
+    const handleDatesSet = (info) => {
+        refreshEvents(info.start, info.end);
     };
 
     const handleDateSelect = (info) => {
@@ -84,6 +130,12 @@ export default function CalendarPage() {
 
     const handleSave = async () => {
         try {
+            // Validar campos obligatorios
+            if (!form.start || !form.end) {
+                alert("Por favor, completa las fechas de inicio y fin.");
+                return;
+            }
+
             const payload = {
                 employee_id: Number(form.employee_id),
                 client: { full_name: form.client_name, phone: form.client_phone },
@@ -186,11 +238,28 @@ export default function CalendarPage() {
         setOpen(true);
     };
 
+    useEffect(() => {
+        const handleEmployeeFilterChange = (event) => {
+            const { employeeId } = event.detail;
+            if (employeeId) {
+                const filteredEvents = allEvents.filter(event => event.extendedProps.employee_id === Number(employeeId));
+                setEvents(filteredEvents);
+            } else {
+                setEvents(allEvents);
+            }
+        };
 
+        window.addEventListener("employeeFilterChange", handleEmployeeFilterChange);
+
+        return () => {
+            window.removeEventListener("employeeFilterChange", handleEmployeeFilterChange);
+        };
+    }, [allEvents]);
 
     return (
         <Box sx={{ position: "relative", p: 1 }}>
             <FullCalendar
+                key="calendar-main" // Add stable key to prevent full re-renders
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                 headerToolbar={{
                     left: "prev,next today",
@@ -204,9 +273,13 @@ export default function CalendarPage() {
                 events={events}
                 height="calc(100vh - 160px)"
                 allDaySlot={false}
-                slotMinTime="08:00:00"
-                slotMaxTime="22:00:00"
+                slotMinTime="07:00:00"
+                slotMaxTime="21:00:00"
+                hiddenDays={[0]} // Hide Sundays
                 eventDisplay="block"
+                locale={esLocale} // Set calendar locale to Spanish
+                scrollTime="09:00:00" // Set default scroll position
+                scrollTimeReset={false} // Prevent scroll reset on event changes
                 eventMouseEnter={(info) => {
                     const el = info.el;
                     el.style.filter = "brightness(1.1)";
@@ -216,28 +289,18 @@ export default function CalendarPage() {
                     info.el.style.filter = "brightness(1)";
                 }}
                 eventContent={(eventInfo) => (
-                    <Box sx={{
-                        p: "2px 4px",
-                        borderRadius: "6px",
-                        fontSize: "0.75rem",
-                        overflow: "hidden",
-                        color: "#fff",
-                        backgroundColor: eventInfo.event.backgroundColor,
-                        whiteSpace: "nowrap",
-                        textOverflow: "ellipsis"
-                    }}>
+                    <div className="event-content">
                         <strong>{eventInfo.timeText}</strong> {eventInfo.event.title}
-                    </Box>
+                    </div>
                 )}
-
-                eventDrop={handleEventChange}     // ⬅️ nuevo
-                eventResize={handleEventChange}     // ⬅️ nuevo
-
-                editable={true}              // permite arrastrar y redimensionar
+                eventDrop={handleEventChange}
+                eventResize={handleEventChange}
+                editable={true}
                 eventResizableFromStart={true}
                 eventStartEditable={true}
                 eventDurationEditable={true}
                 eventClick={handleEventClick}
+                datesSet={handleDatesSet} // Trigger refresh on visible range change
             />
 
             {/* Botón flotante para nuevo turno */}
@@ -356,6 +419,7 @@ export default function CalendarPage() {
                                                     bgcolor: 'white'
                                                 }
                                             }}
+                                            placeholder="Profesional"
                                         >
                                             {employees.map(e => (
                                                 <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
@@ -595,7 +659,7 @@ export default function CalendarPage() {
                                     }}>
                                         💳
                                     </Box>
-                                    <Box sx={{ flex: 1 }}>
+                                    <Box sx={{ flex: 1 }} className="formasdepago">
                                         <Box sx={{ fontWeight: 500, fontSize: '1rem', color: 'grey.700' }}>
                                             Formas de Pago
                                         </Box>
