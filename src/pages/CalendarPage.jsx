@@ -427,7 +427,7 @@ export default function CalendarPage() {
                                             }}
                                             placeholder="Profesional"
                                         >
-                                            {employees.map(e => (
+                                            {(employees || []).map(e => (
                                                 <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
                                             ))}
                                         </TextField>
@@ -448,7 +448,7 @@ export default function CalendarPage() {
                                                 }
                                             }}
                                         >
-                                            {services.map(s => (
+                                            {(services || []).map(s => (
                                                 <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                                             ))}
                                         </TextField>
@@ -730,7 +730,7 @@ export default function CalendarPage() {
                                         variant="outlined"
                                         onClick={() => {
                                             if (!newPayment.method || !newPayment.amount) return;
-                                            setPayments([...payments, newPayment]);
+                                            setPayments([...(payments || []), newPayment]);
                                             setNewPayment({});
                                         }}
                                         sx={{
@@ -761,7 +761,7 @@ export default function CalendarPage() {
                                         <Box sx={{ fontWeight: 600, mb: 2, color: 'grey.700' }}>
                                             📋 Pagos Registrados
                                         </Box>
-                                        {payments.map((p, i) => (
+                                        {(payments || []).map((p, i) => (
                                             <Box key={i} sx={{
                                                 display: "flex",
                                                 justifyContent: "space-between",
@@ -807,7 +807,7 @@ export default function CalendarPage() {
                                                         size="small"
                                                         color="error"
                                                         variant="outlined"
-                                                        onClick={() => setPayments(payments.filter((_, index) => index !== i))}
+                                                        onClick={() => setPayments((payments || []).filter((_, index) => index !== i))}
                                                         sx={{
                                                             minWidth: 32,
                                                             width: 32,

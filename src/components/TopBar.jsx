@@ -54,7 +54,7 @@ export default function TopBar() {
                     >
                         <MenuItem value=""><em>Seleccionar profesional</em>
                         </MenuItem>
-                        {employees.map(e => (
+                        {(employees || []).map(e => (
                             <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
                         ))}
                     </Select>
@@ -64,7 +64,7 @@ export default function TopBar() {
                     </Typography>
                 </Box>
             <Tabs value={tabIndex} onChange={handleTabChange} centered>
-                {tabs.map((tab, i) => (
+                {(tabs || []).map((tab, i) => (
                     <Tab key={i} label={tab.label} />
                 ))}
             </Tabs>
