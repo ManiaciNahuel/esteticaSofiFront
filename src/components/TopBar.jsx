@@ -19,7 +19,15 @@ export default function TopBar() {
     const [today, setToday] = useState(dayjs().format("YYYY-MM-DD"));
 
     useEffect(() => {
-        getEmployees().then(res => setEmployees(res.data));
+        getEmployees()
+            .then(res => {
+                const employeesData = Array.isArray(res.data) ? res.data : [];
+                setEmployees(employeesData);
+            })
+            .catch(err => {
+                console.error("Error fetching employees:", err);
+                setEmployees([]);
+            });
     }, []);
 
     const handleEmployeeChange = (e) => {
@@ -54,20 +62,20 @@ export default function TopBar() {
                     >
                         <MenuItem value=""><em>Seleccionar profesional</em>
                         </MenuItem>
-                        {(employees || []).map(e => (
+                        {Array.isArray(employees) ? employees.map(e => (
                             <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
-                        ))}
+                        )) : []}
                     </Select>
 
                     <Typography variant="body2" sx={{ color: "text.secondary" }}>
                         {dayjs(today).format("DD/MM/YYYY")}
                     </Typography>
                 </Box>
-            <Tabs value={tabIndex} onChange={handleTabChange} centered>
-                {(tabs || []).map((tab, i) => (
-                    <Tab key={i} label={tab.label} />
-                ))}
-            </Tabs>
+                <Tabs value={tabIndex} onChange={handleTabChange} centered>
+                    {Array.isArray(tabs) ? tabs.map((tab, i) => (
+                        <Tab key={i} label={tab.label} />
+                    )) : []}
+                </Tabs>
             </Toolbar>
 
         </AppBar>
