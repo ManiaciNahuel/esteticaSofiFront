@@ -73,8 +73,11 @@ export default function CalendarPage() {
     }, []);
 
     const refreshEvents = async (start, end) => {
-        // Prevent concurrent or repeated fetches
-        if (isFetching) return;
+        // Prevent concurrent fetches but allow queuing
+        if (isFetching) {
+            console.log('Already fetching, skipping concurrent request');
+            return;
+        }
         setIsFetching(true);
         try {
             // Prefer passed start/end, fallback to visibleRange, fallback to today
@@ -82,6 +85,8 @@ export default function CalendarPage() {
             const e = end || (visibleRange && visibleRange.end) || dayjs();
             const from = dayjs(s).format("YYYY-MM-DD");
             const to = dayjs(e).format("YYYY-MM-DD");
+            
+            console.log('Fetching appointments from', from, 'to', to);
             const { data } = await getAppointments(from, to);
             const dataArray = Array.isArray(data) ? data : [];
             const mapped = dataArray.map(a => ({
@@ -116,8 +121,18 @@ export default function CalendarPage() {
     const handleDatesSet = (info) => {
         const startStr = info.startStr || (info.start && dayjs(info.start).format('YYYY-MM-DD'));
         const endStr = info.endStr || (info.end && dayjs(info.end).format('YYYY-MM-DD'));
-        // If range didn't change, skip
-        if (visibleRange && visibleRange.start === startStr && visibleRange.end === endStr) return;
+        
+        // Create a unique key for this range and view
+        const rangeKey = `${startStr}-${endStr}`;
+        const currentRangeKey = visibleRange ? `${visibleRange.start}-${visibleRange.end}` : null;
+        
+        // Only skip if exact same range (but allow view changes)
+        if (currentRangeKey === rangeKey && !isFetching) {
+            console.log('Skipping identical range:', rangeKey);
+            return;
+        }
+        
+        console.log('Fetching new range:', rangeKey, 'from:', currentRangeKey);
         setVisibleRange({ start: startStr, end: endStr });
         refreshEvents(info.start, info.end);
     };
