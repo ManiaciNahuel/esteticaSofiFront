@@ -8,6 +8,8 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
 import { getAppointments, createAppointment, updateAppointment, deleteAppointment } from "../api/appointments";
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
@@ -15,6 +17,11 @@ import { createPayments, getPayments } from "../api/payments";
 import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import './CalendarPage.scss'; // Import SCSS styles
+
+// Configurar dayjs para zona horaria argentina
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault("America/Argentina/Buenos_Aires");
 
 
 export default function CalendarPage() {
@@ -79,10 +86,10 @@ export default function CalendarPage() {
         setIsFetching(true);
         try {
             // Prefer passed start/end, fallback to visibleRange, fallback to today
-            const s = start || (visibleRange && visibleRange.start) || dayjs();
-            const e = end || (visibleRange && visibleRange.end) || dayjs();
-            const from = dayjs(s).format("YYYY-MM-DD");
-            const to = dayjs(e).format("YYYY-MM-DD");
+            const s = start || (visibleRange && visibleRange.start) || dayjs().tz("America/Argentina/Buenos_Aires");
+            const e = end || (visibleRange && visibleRange.end) || dayjs().tz("America/Argentina/Buenos_Aires");
+            const from = dayjs(s).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DD");
+            const to = dayjs(e).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DD");
             const { data } = await getAppointments(from, to);
             const dataArray = Array.isArray(data) ? data : [];
             const mapped = dataArray.map(a => ({
@@ -115,8 +122,8 @@ export default function CalendarPage() {
 
     // Update events when the visible range changes (guard against repeated identical ranges)
     const handleDatesSet = (info) => {
-        const startStr = info.startStr || (info.start && dayjs(info.start).format('YYYY-MM-DD'));
-        const endStr = info.endStr || (info.end && dayjs(info.end).format('YYYY-MM-DD'));
+        const startStr = info.startStr || (info.start && dayjs(info.start).tz("America/Argentina/Buenos_Aires").format('YYYY-MM-DD'));
+        const endStr = info.endStr || (info.end && dayjs(info.end).tz("America/Argentina/Buenos_Aires").format('YYYY-MM-DD'));
 
         // Create a unique key for this range and view
         const rangeKey = `${startStr}-${endStr}`;
@@ -223,11 +230,11 @@ export default function CalendarPage() {
         const event = info.event;
         const id = event.id;
 
-        const newStart = dayjs(event.start).format("YYYY-MM-DDTHH:mm:ss");
-        const newEnd = dayjs(event.end).format("YYYY-MM-DDTHH:mm:ss");
+        const newStart = dayjs(event.start).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss");
+        const newEnd = dayjs(event.end).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss");
 
         // Calcular nueva duración en minutos
-        const newDurationMinutes = dayjs(event.end).diff(dayjs(event.start), 'minute');
+        const newDurationMinutes = dayjs(event.end).tz("America/Argentina/Buenos_Aires").diff(dayjs(event.start).tz("America/Argentina/Buenos_Aires"), 'minute');
 
         try {
             await updateAppointment(id, {
@@ -253,8 +260,8 @@ export default function CalendarPage() {
             client_name: turno.client_name || "",
             client_phone: turno.client_phone || "",
             notes: turno.notes || "",
-            start: dayjs(turno.starts_at).format("YYYY-MM-DDTHH:mm:ss"),
-            end: dayjs(turno.ends_at).format("YYYY-MM-DDTHH:mm:ss"),
+            start: dayjs(turno.starts_at).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss"),
+            end: dayjs(turno.ends_at).tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss"),
             final_price: turno.final_price,
             final_duration_minutes: turno.final_duration_minutes,
         });
@@ -299,6 +306,13 @@ export default function CalendarPage() {
                     center: "title",
                     right: "dayGridMonth,timeGridWeek,timeGridDay",
                 }}
+                buttonText={{
+                    today: 'Hoy',
+                    month: 'Mes',
+                    week: 'Semana',
+                    day: 'Día',
+                    list: 'Lista'
+                }}
                 initialView="timeGridWeek"
                 selectable
                 selectMirror
@@ -311,6 +325,7 @@ export default function CalendarPage() {
                 hiddenDays={[0]} // Hide Sundays
                 eventDisplay="block"
                 locale="es" // Set calendar locale to Spanish
+                timeZone="America/Argentina/Buenos_Aires" // Set Argentine timezone
                 scrollTime="09:00:00" // Set default scroll position
                 scrollTimeReset={false} // Prevent scroll reset on event changes
                 eventMouseEnter={(info) => {
@@ -561,12 +576,12 @@ export default function CalendarPage() {
                                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                                             <DateTimePicker
                                                 label="🕐 Inicio"
-                                                value={form.start ? dayjs(form.start) : dayjs()}
+                                                value={form.start ? dayjs(form.start).tz("America/Argentina/Buenos_Aires") : dayjs().tz("America/Argentina/Buenos_Aires")}
                                                 onChange={(newValue) =>
                                                     setForm({
                                                         ...form,
-                                                        start: newValue.format("YYYY-MM-DDTHH:mm:ss"),
-                                                        end: newValue.add(form.final_duration_minutes || 60, "minute").format("YYYY-MM-DDTHH:mm:ss")
+                                                        start: newValue.tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss"),
+                                                        end: newValue.tz("America/Argentina/Buenos_Aires").add(form.final_duration_minutes || 60, "minute").format("YYYY-MM-DDTHH:mm:ss")
                                                     })
                                                 }
                                                 slotProps={{
@@ -588,11 +603,11 @@ export default function CalendarPage() {
                                         <LocalizationProvider dateAdapter={AdapterDayjs}>
                                             <DateTimePicker
                                                 label="⏰ Fin"
-                                                value={form.end ? dayjs(form.end) : dayjs().add(1, "hour")}
+                                                value={form.end ? dayjs(form.end).tz("America/Argentina/Buenos_Aires") : dayjs().tz("America/Argentina/Buenos_Aires").add(1, "hour")}
                                                 onChange={(newValue) =>
                                                     setForm({
                                                         ...form,
-                                                        end: newValue.format("YYYY-MM-DDTHH:mm:ss")
+                                                        end: newValue.tz("America/Argentina/Buenos_Aires").format("YYYY-MM-DDTHH:mm:ss")
                                                     })
                                                 }
                                                 slotProps={{
