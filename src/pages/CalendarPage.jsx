@@ -7,8 +7,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 // Removed problematic locale import
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import dayjs from "dayjs";
-import { getAppointments, createAppointment, updateAppointment, deleteAppointment } from "../api/appointments";
+import { getAppointments, createAppointment, updateAppointment, deleteAppointment, searchAppointmentsByClient } from "../api/appointments";
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
 import { createPayments, getPayments } from "../api/payments";
@@ -27,6 +28,10 @@ export default function CalendarPage() {
     const [open, setOpen] = useState(false);
     const [payments, setPayments] = useState([]);
     const [newPayment, setNewPayment] = useState({});
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
     const [form, setForm] = useState({
         employee_id: localStorage.getItem("employeeId") || "",
         service_id: "",
@@ -271,6 +276,50 @@ export default function CalendarPage() {
         setOpen(true);
     };
 
+    // Función para buscar turnos por cliente
+    const handleClientSearch = async () => {
+        if (!searchTerm.trim()) {
+            alert("Por favor ingrese un nombre para buscar");
+            return;
+        }
+
+        setIsSearching(true);
+        try {
+            const response = await searchAppointmentsByClient(searchTerm);
+            setSearchResults(response.data || []);
+        } catch (error) {
+            console.error("Error al buscar turnos:", error);
+            alert("Error al realizar la búsqueda");
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Función para abrir un turno desde los resultados de búsqueda
+    const handleSearchResultClick = (appointment) => {
+        setForm({
+            id: appointment.id,
+            employee_id: appointment.employee_id,
+            service_id: appointment.service_id,
+            client_name: appointment.client_name || "",
+            client_phone: appointment.client_phone || "",
+            notes: appointment.notes || "",
+            start: dayjs(appointment.starts_at).format("YYYY-MM-DDTHH:mm:ss"),
+            end: dayjs(appointment.ends_at).format("YYYY-MM-DDTHH:mm:ss"),
+            final_price: appointment.final_price,
+            final_duration_minutes: appointment.final_duration_minutes,
+        });
+
+        // Cargar pagos del turno
+        getPayments(appointment.id).then(response => {
+            setPayments(response.data || []);
+        }).catch(() => setPayments([]));
+
+        setSearchOpen(false);
+        setOpen(true);
+    };
+
     useEffect(() => {
         const handleEmployeeFilterChange = (event) => {
             const { employeeId } = event.detail;
@@ -366,6 +415,21 @@ export default function CalendarPage() {
                     }}
                 >
                     <AddIcon />
+                </Fab>
+            </Tooltip>
+
+            {/* Botón flotante para buscar cliente */}
+            <Tooltip title="Buscar cliente">
+                <Fab
+                    color="secondary"
+                    sx={{ position: "fixed", bottom: 24, right: 96, boxShadow: 4 }}
+                    onClick={() => {
+                        setSearchTerm("");
+                        setSearchResults([]);
+                        setSearchOpen(true);
+                    }}
+                >
+                    <SearchIcon />
                 </Fab>
             </Tooltip>
 
@@ -934,6 +998,107 @@ export default function CalendarPage() {
                 </DialogActions>
 
             </Dialog>
+
+            {/* Modal de búsqueda de cliente */}
+            <Dialog
+                open={searchOpen}
+                onClose={() => setSearchOpen(false)}
+                maxWidth="md"
+                fullWidth
+                className="search-modal"
+            >
+                <DialogTitle className="search-modal-title">
+                    🔍 Buscar Turnos por Cliente
+                </DialogTitle>
+
+                <DialogContent className="search-modal-content">
+                    <Box sx={{ mb: 3 }}>
+                        <TextField
+                            fullWidth
+                            label="Nombre o apellido del cliente"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleClientSearch()}
+                            placeholder="Ej: María, González, etc."
+                            sx={{
+                                '& .MuiOutlinedInput-root': {
+                                    borderRadius: 2,
+                                }
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            onClick={handleClientSearch}
+                            disabled={isSearching}
+                            className="search-button"
+                            startIcon={<SearchIcon />}
+                        >
+                            {isSearching ? 'Buscando...' : 'Buscar'}
+                        </Button>
+                    </Box>
+
+                    {/* Resultados de búsqueda */}
+                    {searchResults.length > 0 && (
+                        <Box>
+                            <div className="search-results-title">
+                                📅 {searchResults.length} turno(s) encontrado(s)
+                            </div>
+                            <div className="search-results-container">
+                                {searchResults.map((appointment) => (
+                                    <div
+                                        key={appointment.id}
+                                        className="search-result-card"
+                                        onClick={() => handleSearchResultClick(appointment)}
+                                    >
+                                        <div className="search-result-layout">
+                                            <div className="search-result-info">
+                                                <div className="client-name">
+                                                    👤 {appointment.client_name}
+                                                </div>
+                                                <div className="service-name">
+                                                    💅 {appointment.service_name}
+                                                </div>
+                                                <div className="employee-name">
+                                                    👩‍💼 {appointment.employee_name}
+                                                </div>
+                                            </div>
+                                            <div className="search-result-details">
+                                                <div className="date">
+                                                    📅 {dayjs(appointment.starts_at).format('DD/MM/YYYY')}
+                                                </div>
+                                                <div className="time">
+                                                    🕐 {dayjs(appointment.starts_at).format('HH:mm')} - {dayjs(appointment.ends_at).format('HH:mm')}
+                                                </div>
+                                                {appointment.final_price && (
+                                                    <div className="price">
+                                                        💰 ${appointment.final_price}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </Box>
+                    )}
+
+                    {searchResults.length === 0 && searchTerm && !isSearching && (
+                        <div className="search-no-results">
+                            😔 No se encontraron turnos para "{searchTerm}"
+                        </div>
+                    )}
+                </DialogContent>
+
+                <DialogActions className="search-modal-actions">
+                    <Button
+                        onClick={() => setSearchOpen(false)}
+                        className="search-close-button"
+                    >
+                        Cerrar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
         </Box>
     );
 }

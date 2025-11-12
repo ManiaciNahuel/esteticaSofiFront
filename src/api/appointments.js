@@ -11,3 +11,6 @@ export const updateAppointment = (id, data) =>
 
 export const deleteAppointment = (id) =>
     api.delete(`/appointments/${id}`);
+
+export const searchAppointmentsByClient = (clientName) =>
+    api.get('/appointments/search', { params: { client: clientName } });
