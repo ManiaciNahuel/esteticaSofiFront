@@ -30,7 +30,7 @@ export default function CashPage() {
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {Object.entries(data.agrupado_por_empleada).map(([employee, methods]) => {
+                    {Object.entries(data.agrupado_por_empleada || {}).map(([employee, methods]) => {
                         const efectivo = methods['CASH'] || 0;
                         const transferencia = methods['TRANSFER'] || 0;
                         const total = efectivo + transferencia;
@@ -50,7 +50,7 @@ export default function CashPage() {
 
             {/* Cash handling logic summary per professional */}
             <Box>
-                {Object.entries(data.agrupado_por_empleada).map(([employee, methods]) => {
+                {Object.entries(data.agrupado_por_empleada || {}).map(([employee, methods]) => {
                     const efectivo = methods['CASH'] || 0;
                     const transferencia = methods['TRANSFER'] || 0;
                     const total = efectivo + transferencia;

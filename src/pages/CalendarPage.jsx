@@ -4,13 +4,14 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import esLocale from '@fullcalendar/core/locales/es';
+// Removed problematic locale import
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import dayjs from "dayjs";
 import 'dayjs/locale/es';
 dayjs.locale('es');
-import { getAppointments, createAppointment, updateAppointment, deleteAppointment } from "../api/appointments";
+import { getAppointments, createAppointment, updateAppointment, deleteAppointment, searchAppointmentsByClient } from "../api/appointments";
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
 import { createPayments, getPayments } from "../api/payments";
@@ -24,9 +25,15 @@ export default function CalendarPage() {
     const [allEvents, setAllEvents] = useState([]); // Store all events
     const [services, setServices] = useState([]);
     const [employees, setEmployees] = useState([]);
+    const [visibleRange, setVisibleRange] = useState(null);
+    const [isFetching, setIsFetching] = useState(false);
     const [open, setOpen] = useState(false);
     const [payments, setPayments] = useState([]);
     const [newPayment, setNewPayment] = useState({});
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
     const [form, setForm] = useState({
         employee_id: localStorage.getItem("employeeId") || "",
         service_id: "",
@@ -44,7 +51,8 @@ export default function CalendarPage() {
         const fetchAppointments = async () => {
             try {
                 const response = await axios.get("/appointments");
-                const mappedEvents = response.data.map(a => ({
+                const dataArray = Array.isArray(response.data) ? response.data : [];
+                const mappedEvents = dataArray.map(a => ({
                     id: a.id,
                     title: `${a.client_name || "Cliente"} - ${a.service_name}`,
                     start: a.starts_at,
@@ -57,6 +65,8 @@ export default function CalendarPage() {
                 setEvents(mappedEvents); // Initialize visible events
             } catch (error) {
                 console.error("Error fetching appointments:", error);
+                setAllEvents([]);
+                setEvents([]);
             }
         };
 
@@ -64,17 +74,25 @@ export default function CalendarPage() {
     }, []);
 
     useEffect(() => {
-        getServices().then(res => setServices(res.data));
-        getEmployees().then(res => setEmployees(res.data));
-        refreshEvents();
+        getServices().then(res => setServices(Array.isArray(res.data) ? res.data : [])).catch(() => setServices([]));
+        getEmployees().then(res => setEmployees(Array.isArray(res.data) ? res.data : [])).catch(() => setEmployees([]));
     }, []);
 
     const refreshEvents = async (start, end) => {
+        // Prevent concurrent fetches but allow queuing
+        if (isFetching) {
+            return;
+        }
+        setIsFetching(true);
         try {
-            const from = dayjs(start).format("YYYY-MM-DD");
-            const to = dayjs(end).format("YYYY-MM-DD");
+            // Prefer passed start/end, fallback to visibleRange, fallback to today
+            const s = start || (visibleRange && visibleRange.start) || dayjs();
+            const e = end || (visibleRange && visibleRange.end) || dayjs();
+            const from = dayjs(s).format("YYYY-MM-DD");
+            const to = dayjs(e).format("YYYY-MM-DD");
             const { data } = await getAppointments(from, to);
-            const mapped = data.map(a => ({
+            const dataArray = Array.isArray(data) ? data : [];
+            const mapped = dataArray.map(a => ({
                 id: a.id,
                 title: `${a.client_name || "Cliente"} - ${a.service_name}`,
                 start: a.starts_at,
@@ -84,7 +102,7 @@ export default function CalendarPage() {
                 extendedProps: { ...a }
             }));
             setAllEvents(mapped); // Update allEvents instead of events
-            
+
             // Apply current filter if there's one
             const selectedEmployeeId = localStorage.getItem("employeeId");
             if (selectedEmployeeId) {
@@ -95,12 +113,32 @@ export default function CalendarPage() {
             }
         } catch (error) {
             console.error("Error fetching events:", error);
+            setAllEvents([]);
+            setEvents([]);
+        } finally {
+            setIsFetching(false);
         }
     };
 
-    // Update events when the visible range changes
+    // Update events when the visible range changes (guard against repeated identical ranges)
     const handleDatesSet = (info) => {
-        refreshEvents(info.start, info.end);
+        const startStr = info.startStr || (info.start && dayjs(info.start).format('YYYY-MM-DD'));
+        const endStr = info.endStr || (info.end && dayjs(info.end).format('YYYY-MM-DD'));
+
+        // Create a unique key for this range and view
+        const rangeKey = `${startStr}-${endStr}`;
+        const currentRangeKey = visibleRange ? `${visibleRange.start}-${visibleRange.end}` : null;
+
+        // Only skip if exact same range (but allow view changes)
+        if (currentRangeKey === rangeKey) {
+            return;
+        }
+
+        // Use setTimeout to avoid state updates during render
+        setTimeout(() => {
+            setVisibleRange({ start: startStr, end: endStr });
+            refreshEvents(info.start, info.end);
+        }, 0);
     };
 
     const handleDateSelect = (info) => {
@@ -240,6 +278,50 @@ export default function CalendarPage() {
         setOpen(true);
     };
 
+    // Función para buscar turnos por cliente
+    const handleClientSearch = async () => {
+        if (!searchTerm.trim()) {
+            alert("Por favor ingrese un nombre para buscar");
+            return;
+        }
+
+        setIsSearching(true);
+        try {
+            const response = await searchAppointmentsByClient(searchTerm);
+            setSearchResults(response.data || []);
+        } catch (error) {
+            console.error("Error al buscar turnos:", error);
+            alert("Error al realizar la búsqueda");
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    // Función para abrir un turno desde los resultados de búsqueda
+    const handleSearchResultClick = (appointment) => {
+        setForm({
+            id: appointment.id,
+            employee_id: appointment.employee_id,
+            service_id: appointment.service_id,
+            client_name: appointment.client_name || "",
+            client_phone: appointment.client_phone || "",
+            notes: appointment.notes || "",
+            start: dayjs(appointment.starts_at).format("YYYY-MM-DDTHH:mm:ss"),
+            end: dayjs(appointment.ends_at).format("YYYY-MM-DDTHH:mm:ss"),
+            final_price: appointment.final_price,
+            final_duration_minutes: appointment.final_duration_minutes,
+        });
+
+        // Cargar pagos del turno
+        getPayments(appointment.id).then(response => {
+            setPayments(response.data || []);
+        }).catch(() => setPayments([]));
+
+        setSearchOpen(false);
+        setOpen(true);
+    };
+
     useEffect(() => {
         const handleEmployeeFilterChange = (event) => {
             const { employeeId } = event.detail;
@@ -268,6 +350,13 @@ export default function CalendarPage() {
                     center: "title",
                     right: "dayGridMonth,timeGridWeek,timeGridDay",
                 }}
+                buttonText={{
+                    today: 'Hoy',
+                    month: 'Mes',
+                    week: 'Semana',
+                    day: 'Día',
+                    list: 'Lista'
+                }}
                 initialView="timeGridWeek"
                 selectable
                 selectMirror
@@ -279,7 +368,7 @@ export default function CalendarPage() {
                 slotMaxTime="21:00:00"
                 hiddenDays={[0]} // Hide Sundays
                 eventDisplay="block"
-                locale={esLocale} // Set calendar locale to Spanish
+                locale="es" // Set calendar locale to Spanish
                 scrollTime="09:00:00" // Set default scroll position
                 scrollTimeReset={false} // Prevent scroll reset on event changes
                 eventMouseEnter={(info) => {
@@ -328,6 +417,21 @@ export default function CalendarPage() {
                     }}
                 >
                     <AddIcon />
+                </Fab>
+            </Tooltip>
+
+            {/* Botón flotante para buscar cliente */}
+            <Tooltip title="Buscar cliente">
+                <Fab
+                    color="secondary"
+                    sx={{ position: "fixed", bottom: 24, right: 96, boxShadow: 4 }}
+                    onClick={() => {
+                        setSearchTerm("");
+                        setSearchResults([]);
+                        setSearchOpen(true);
+                    }}
+                >
+                    <SearchIcon />
                 </Fab>
             </Tooltip>
 
@@ -423,9 +527,9 @@ export default function CalendarPage() {
                                             }}
                                             placeholder="Profesional"
                                         >
-                                            {employees.map(e => (
+                                            {Array.isArray(employees) ? employees.map(e => (
                                                 <MenuItem key={e.id} value={e.id}>{e.name}</MenuItem>
-                                            ))}
+                                            )) : []}
                                         </TextField>
                                     </Grid>
 
@@ -444,9 +548,9 @@ export default function CalendarPage() {
                                                 }
                                             }}
                                         >
-                                            {services.map(s => (
+                                            {Array.isArray(services) ? services.map(s => (
                                                 <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                                            ))}
+                                            )) : []}
                                         </TextField>
                                     </Grid>
 
@@ -696,7 +800,7 @@ export default function CalendarPage() {
                                     borderRadius: 2,
                                     border: '1px solid',
                                     borderColor: 'rgba(226, 232, 240, 0.8)'
-                                }}>
+                                }} className="nuevopago">
                                     <TextField
                                         select
                                         label="💰 Método"
@@ -728,7 +832,8 @@ export default function CalendarPage() {
                                         variant="outlined"
                                         onClick={() => {
                                             if (!newPayment.method || !newPayment.amount) return;
-                                            setPayments([...payments, newPayment]);
+                                            const currentPayments = Array.isArray(payments) ? payments : [];
+                                            setPayments([...currentPayments, newPayment]);
                                             setNewPayment({});
                                         }}
                                         sx={{
@@ -759,7 +864,7 @@ export default function CalendarPage() {
                                         <Box sx={{ fontWeight: 600, mb: 2, color: 'grey.700' }}>
                                             📋 Pagos Registrados
                                         </Box>
-                                        {payments.map((p, i) => (
+                                        {Array.isArray(payments) ? payments.map((p, i) => (
                                             <Box key={i} sx={{
                                                 display: "flex",
                                                 justifyContent: "space-between",
@@ -805,7 +910,10 @@ export default function CalendarPage() {
                                                         size="small"
                                                         color="error"
                                                         variant="outlined"
-                                                        onClick={() => setPayments(payments.filter((_, index) => index !== i))}
+                                                        onClick={() => {
+                                                            const currentPayments = Array.isArray(payments) ? payments : [];
+                                                            setPayments(currentPayments.filter((_, index) => index !== i));
+                                                        }}
                                                         sx={{
                                                             minWidth: 32,
                                                             width: 32,
@@ -818,7 +926,7 @@ export default function CalendarPage() {
                                                     </Button>
                                                 </Box>
                                             </Box>
-                                        ))}
+                                        )) : []}
                                     </Box>
                                 )}
                             </Box>
@@ -894,6 +1002,107 @@ export default function CalendarPage() {
                 </DialogActions>
 
             </Dialog>
+
+            {/* Modal de búsqueda de cliente */}
+            <Dialog
+                open={searchOpen}
+                onClose={() => setSearchOpen(false)}
+                maxWidth="md"
+                fullWidth
+                className="search-modal"
+            >
+                <DialogTitle className="search-modal-title">
+                    🔍 Buscar Turnos por Cliente
+                </DialogTitle>
+
+                <DialogContent className="search-modal-content">
+                    <Box sx={{ mb: 3 }}>
+                        <TextField
+                            fullWidth
+                            label="Nombre o apellido del cliente"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleClientSearch()}
+                            placeholder="Ej: María, González, etc."
+                            sx={{
+                                '& .MuiOutlinedInput-root': {
+                                    borderRadius: 2,
+                                }
+                            }}
+                        />
+                        <Button
+                            variant="contained"
+                            onClick={handleClientSearch}
+                            disabled={isSearching}
+                            className="search-button"
+                            startIcon={<SearchIcon />}
+                        >
+                            {isSearching ? 'Buscando...' : 'Buscar'}
+                        </Button>
+                    </Box>
+
+                    {/* Resultados de búsqueda */}
+                    {searchResults.length > 0 && (
+                        <Box>
+                            <div className="search-results-title">
+                                📅 {searchResults.length} turno(s) encontrado(s)
+                            </div>
+                            <div className="search-results-container">
+                                {searchResults.map((appointment) => (
+                                    <div
+                                        key={appointment.id}
+                                        className="search-result-card"
+                                        onClick={() => handleSearchResultClick(appointment)}
+                                    >
+                                        <div className="search-result-layout">
+                                            <div className="search-result-info">
+                                                <div className="client-name">
+                                                    👤 {appointment.client_name}
+                                                </div>
+                                                <div className="service-name">
+                                                    💅 {appointment.service_name}
+                                                </div>
+                                                <div className="employee-name">
+                                                    👩‍💼 {appointment.employee_name}
+                                                </div>
+                                            </div>
+                                            <div className="search-result-details">
+                                                <div className="date">
+                                                    📅 {dayjs(appointment.starts_at).format('DD/MM/YYYY')}
+                                                </div>
+                                                <div className="time">
+                                                    🕐 {dayjs(appointment.starts_at).format('HH:mm')} - {dayjs(appointment.ends_at).format('HH:mm')}
+                                                </div>
+                                                {appointment.final_price && (
+                                                    <div className="price">
+                                                        💰 ${appointment.final_price}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </Box>
+                    )}
+
+                    {searchResults.length === 0 && searchTerm && !isSearching && (
+                        <div className="search-no-results">
+                            😔 No se encontraron turnos para "{searchTerm}"
+                        </div>
+                    )}
+                </DialogContent>
+
+                <DialogActions className="search-modal-actions">
+                    <Button
+                        onClick={() => setSearchOpen(false)}
+                        className="search-close-button"
+                    >
+                        Cerrar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
         </Box>
     );
 }

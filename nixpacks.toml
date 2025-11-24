@@ -1,0 +1,7 @@
+[variables]
+NODE_VERSION = "20"
+NPM_CONFIG_OPTIONAL = "false"
+ROLLUP_NO_NATIVE = "true"
+
+[phases.build]
+cmds = ["rm -rf node_modules/.cache || true", "npm install --no-optional --legacy-peer-deps", "npm run build"]
