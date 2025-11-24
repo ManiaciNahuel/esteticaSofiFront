@@ -8,6 +8,8 @@ import esLocale from '@fullcalendar/core/locales/es';
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import dayjs from "dayjs";
+import 'dayjs/locale/es';
+dayjs.locale('es');
 import { getAppointments, createAppointment, updateAppointment, deleteAppointment } from "../api/appointments";
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
@@ -525,10 +527,11 @@ export default function CalendarPage() {
 
                                 <Grid container spacing={2}>
                                     <Grid item xs={12}>
-                                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
                                             <DateTimePicker
                                                 label="🕐 Inicio"
                                                 value={form.start ? dayjs(form.start) : dayjs()}
+                                                format="DD/MM/YYYY HH:mm"
                                                 onChange={(newValue) =>
                                                     setForm({
                                                         ...form,
@@ -552,10 +555,11 @@ export default function CalendarPage() {
                                     </Grid>
 
                                     <Grid item xs={12}>
-                                        <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
                                             <DateTimePicker
                                                 label="⏰ Fin"
                                                 value={form.end ? dayjs(form.end) : dayjs().add(1, "hour")}
+                                                format="DD/MM/YYYY HH:mm"
                                                 onChange={(newValue) =>
                                                     setForm({
                                                         ...form,
