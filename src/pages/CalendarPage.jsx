@@ -8,6 +8,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import dayjs from "dayjs";
 import 'dayjs/locale/es';
 dayjs.locale('es');
@@ -15,8 +16,10 @@ import { getAppointments, createAppointment, updateAppointment, deleteAppointmen
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
 import { createPayments, getPayments } from "../api/payments";
+import { getDailyNote, saveDailyNote, deleteDailyNote } from "../api/daily-notes";
 import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import ClientSearchAutocomplete from "../components/ClientSearchAutocomplete";
 import './CalendarPage.scss'; // Import SCSS styles
 
 
@@ -34,6 +37,11 @@ export default function CalendarPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [dailyNote, setDailyNote] = useState("");
+    const [dailyNotes, setDailyNotes] = useState({});
+    const [selectedClient, setSelectedClient] = useState(null);
     const [form, setForm] = useState({
         employee_id: localStorage.getItem("employeeId") || "",
         service_id: "",
@@ -138,7 +146,76 @@ export default function CalendarPage() {
         setTimeout(() => {
             setVisibleRange({ start: startStr, end: endStr });
             refreshEvents(info.start, info.end);
+            loadNotesForRange(info.start, info.end);
         }, 0);
+    };
+
+    // Load notes for visible date range
+    const loadNotesForRange = async (start, end) => {
+        try {
+            const from = dayjs(start).format("YYYY-MM-DD");
+            const to = dayjs(end).format("YYYY-MM-DD");
+            const response = await axios.get(`/daily-notes?from=${from}&to=${to}`);
+            const notesMap = {};
+            response.data.forEach(note => {
+                // Convertir fecha del backend a formato YYYY-MM-DD para que coincida
+                const dateKey = dayjs(note.date).format('YYYY-MM-DD');
+                notesMap[dateKey] = note.content;
+            });
+            setDailyNotes(notesMap);
+        } catch (error) {
+            console.error("Error loading notes for range:", error);
+        }
+    };
+
+    // Custom day header content with note icon
+    const dayHeaderContent = (arg) => {
+        const dateStr = dayjs(arg.date).format('YYYY-MM-DD');
+        const hasNote = dailyNotes[dateStr] && dailyNotes[dateStr].trim() !== '';
+        
+        return (
+            <div className="custom-day-header">
+                <span className="day-text">{arg.text}</span>
+                {hasNote ? (
+                    <span 
+                        className="note-icon has-note"
+                        title="Este día tiene anotaciones - Click para ver/editar"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDayNoteClick(dateStr);
+                        }}
+                    >
+                        🔔
+                    </span>
+                ) : (
+                    <span 
+                        className="add-note-icon no-note"
+                        title="Agregar anotación para este día"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDayNoteClick(dateStr);
+                        }}
+                    >
+                        ➕
+                    </span>
+                )}
+            </div>
+        );
+    };
+
+    // Handle click on day note icon
+    const handleDayNoteClick = async (dateStr) => {
+        setSelectedDate(dateStr);
+        setNoteDialogOpen(true);
+        
+        try {
+            const response = await getDailyNote(dateStr);
+            setDailyNote(response.data?.content || "");
+        } catch (error) {
+            setDailyNote("");
+        }
     };
 
     const handleDateSelect = (info) => {
@@ -153,6 +230,7 @@ export default function CalendarPage() {
             final_price: "",
             final_duration_minutes: "",
         });
+        setSelectedClient(null);
         setPayments([]);
         setNewPayment({});
         setOpen(true);
@@ -165,6 +243,15 @@ export default function CalendarPage() {
             service_id: id,
             final_price: s?.base_price || "",
             final_duration_minutes: s?.base_duration_minutes || "",
+        });
+    };
+
+    const handleClientSelect = (client) => {
+        setSelectedClient(client);
+        setForm({
+            ...form,
+            client_name: client.full_name,
+            client_phone: client.phone || ""
         });
     };
 
@@ -212,6 +299,53 @@ export default function CalendarPage() {
             alert("Error al guardar turno");
         }
     };
+
+    // Handlers para anotaciones diarias
+    const handleNotesButtonClick = async () => {
+        const today = dayjs().format("YYYY-MM-DD");
+        setSelectedDate(today);
+        setNoteDialogOpen(true);
+        
+        // Cargar nota existente si existe
+        try {
+            const response = await getDailyNote(today);
+            setDailyNote(response.data?.content || "");
+        } catch (error) {
+            setDailyNote(""); // No hay nota para este día
+        }
+    };
+
+    const handleSaveDailyNote = async () => {
+        try {
+            if (dailyNote.trim()) {
+                await saveDailyNote(selectedDate, dailyNote.trim());
+                setDailyNotes(prev => ({
+                    ...prev,
+                    [selectedDate]: dailyNote.trim() // selectedDate ya está en formato YYYY-MM-DD
+                }));
+            } else {
+                // Si está vacía, eliminar la nota
+                await deleteDailyNote(selectedDate);
+                setDailyNotes(prev => {
+                    const newNotes = { ...prev };
+                    delete newNotes[selectedDate];
+                    return newNotes;
+                });
+            }
+            setNoteDialogOpen(false);
+            setDailyNote("");
+            setSelectedDate(null);
+        } catch (error) {
+            console.error("Error al guardar la anotación:", error);
+            alert("Error al guardar la anotación");
+        }
+    };
+
+    const handleCancelDailyNote = () => {
+        setNoteDialogOpen(false);
+        setDailyNote("");
+        setSelectedDate(null);
+    };
     const handleDelete = async () => {
         if (!form.id) return;
         if (!window.confirm("¿Seguro que querés eliminar este turno?")) return;
@@ -242,7 +376,6 @@ export default function CalendarPage() {
                 ends_at: newEnd,
                 final_duration_minutes: newDurationMinutes
             });
-            console.log(`✅ Turno ${id} actualizado`);
             refreshEvents(); // Refrescar para asegurar consistencia
         } catch (err) {
             console.error("Error al mover turno:", err);
@@ -265,6 +398,17 @@ export default function CalendarPage() {
             final_price: turno.final_price,
             final_duration_minutes: turno.final_duration_minutes,
         });
+
+        // Set selected client for existing appointment
+        if (turno.client_name) {
+            setSelectedClient({
+                id: turno.client_id,
+                full_name: turno.client_name,
+                phone: turno.client_phone || ""
+            });
+        } else {
+            setSelectedClient(null);
+        }
 
         // Cargar pagos existentes
         try {
@@ -392,6 +536,7 @@ export default function CalendarPage() {
                 eventDurationEditable={true}
                 eventClick={handleEventClick}
                 datesSet={handleDatesSet} // Trigger refresh on visible range change
+                dayHeaderContent={dayHeaderContent} // Custom day header with note icons
             />
 
             {/* Botón flotante para nuevo turno */}
@@ -411,12 +556,73 @@ export default function CalendarPage() {
                             final_price: "",
                             final_duration_minutes: "",
                         });
+                        setSelectedClient(null);
                         setPayments([]);
                         setNewPayment({});
                         setOpen(true);
                     }}
                 >
                     <AddIcon />
+                </Fab>
+            </Tooltip>
+
+            {/* Botón flotante para anotaciones diarias */}
+            <Tooltip title="Anotaciones del día">
+                <Fab
+                    color="secondary"
+                    sx={{ 
+                        position: "fixed", 
+                        bottom: 24, 
+                        right: 96, 
+                        boxShadow: 4,
+                        bgcolor: 'rgba(139, 69, 19, 0.9)',
+                        '&:hover': {
+                            bgcolor: 'rgba(139, 69, 19, 1)',
+                        }
+                    }}
+                    onClick={handleNotesButtonClick}
+                >
+                    <EditNoteIcon />
+                </Fab>
+            </Tooltip>
+
+            {/* Botón flotante para anotaciones diarias */}
+            <Tooltip title="Anotaciones del día">
+                <Fab
+                    color="secondary"
+                    sx={{ 
+                        position: "fixed", 
+                        bottom: 24, 
+                        right: 96, 
+                        boxShadow: 4,
+                        bgcolor: 'rgba(139, 69, 19, 0.9)',
+                        '&:hover': {
+                            bgcolor: 'rgba(139, 69, 19, 1)',
+                        }
+                    }}
+                    onClick={handleNotesButtonClick}
+                >
+                    <EditNoteIcon />
+                </Fab>
+            </Tooltip>
+
+            {/* Botón flotante para anotaciones diarias */}
+            <Tooltip title="Anotaciones del día">
+                <Fab
+                    color="secondary"
+                    sx={{ 
+                        position: "fixed", 
+                        bottom: 24, 
+                        right: 96, 
+                        boxShadow: 4,
+                        bgcolor: 'rgba(139, 69, 19, 0.9)',
+                        '&:hover': {
+                            bgcolor: 'rgba(139, 69, 19, 1)',
+                        }
+                    }}
+                    onClick={() => handleNotesButtonClick()}
+                >
+                    <EditNoteIcon />
                 </Fab>
             </Tooltip>
 
@@ -555,18 +761,11 @@ export default function CalendarPage() {
                                     </Grid>
 
                                     <Grid item xs={12}>
-                                        <TextField
-                                            label="👥 Cliente"
-                                            fullWidth
-                                            variant="outlined"
+                                        <ClientSearchAutocomplete
                                             value={form.client_name}
-                                            onChange={e => setForm({ ...form, client_name: e.target.value })}
-                                            sx={{
-                                                '& .MuiOutlinedInput-root': {
-                                                    borderRadius: 2,
-                                                    bgcolor: 'white'
-                                                }
-                                            }}
+                                            onChange={(value) => setForm({ ...form, client_name: value })}
+                                            onSelect={handleClientSelect}
+                                            placeholder="Buscar cliente existente o escribir nombre nuevo..."
                                         />
                                     </Grid>
 
@@ -1099,6 +1298,130 @@ export default function CalendarPage() {
                         className="search-close-button"
                     >
                         Cerrar
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Diálogo para anotaciones diarias */}
+            <Dialog
+                open={noteDialogOpen}
+                onClose={handleCancelDailyNote}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: 4,
+                        boxShadow: '0 24px 38px 3px rgba(0,0,0,0.14)',
+                        overflow: 'visible'
+                    }
+                }}
+            >
+                <DialogTitle sx={{
+                    fontWeight: 600,
+                    fontSize: '1.4rem',
+                    pb: 2,
+                    pt: 3,
+                    px: 4,
+                    bgcolor: 'rgba(139, 69, 19, 0.08)',
+                    color: 'grey.800',
+                    textAlign: 'left',
+                    borderBottom: '1px solid',
+                    borderColor: 'rgba(139, 69, 19, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
+                }}>
+                    <EditNoteIcon sx={{ fontSize: '1.6rem', color: 'rgba(139, 69, 19, 0.8)' }} />
+                    Anotaciones del día {selectedDate ? dayjs(selectedDate).format('DD/MM/YYYY') : ''}
+                </DialogTitle>
+                
+                <DialogContent sx={{
+                    mt: 3,
+                    px: 4,
+                    pb: 2,
+                    bgcolor: 'rgba(248, 250, 252, 0.6)'
+                }}>
+                    <TextField
+                        fullWidth
+                        multiline
+                        rows={6}
+                        placeholder="Escribe observaciones o notas para este día..."
+                        value={dailyNote}
+                        onChange={(e) => setDailyNote(e.target.value)}
+                        variant="outlined"
+                        sx={{
+                            mt: 1,
+                            '& .MuiOutlinedInput-root': {
+                                borderRadius: 2,
+                                bgcolor: 'white',
+                                fontSize: '1rem',
+                                lineHeight: 1.6
+                            }
+                        }}
+                    />
+                    
+                    <Box sx={{ 
+                        mt: 2, 
+                        p: 2, 
+                        bgcolor: 'rgba(139, 69, 19, 0.05)', 
+                        borderRadius: 2,
+                        border: '1px solid rgba(139, 69, 19, 0.1)'
+                    }}>
+                        <Box sx={{ 
+                            fontSize: '0.875rem', 
+                            color: 'grey.600',
+                            fontStyle: 'italic',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                        }}>
+                            💡 Las anotaciones son opcionales y se guardan automáticamente para este día
+                        </Box>
+                    </Box>
+                </DialogContent>
+
+                <DialogActions sx={{
+                    px: 4,
+                    py: 3,
+                    bgcolor: 'grey.50',
+                    borderTop: '1px solid',
+                    borderColor: 'grey.200',
+                    gap: 2
+                }}>
+                    <Button
+                        onClick={handleCancelDailyNote}
+                        sx={{
+                            borderRadius: 2,
+                            px: 3,
+                            py: 1,
+                            fontWeight: 600,
+                            color: 'grey.600'
+                        }}
+                    >
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleSaveDailyNote}
+                        sx={{
+                            borderRadius: 2,
+                            px: 4,
+                            py: 1.2,
+                            fontWeight: 600,
+                            fontSize: '0.95rem',
+                            bgcolor: 'rgba(139, 69, 19, 0.9)',
+                            color: 'white',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                            '&:hover': {
+                                bgcolor: 'rgba(139, 69, 19, 1)',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                                transform: 'translateY(-1px)'
+                            },
+                            transition: 'all 0.2s ease-in-out'
+                        }}
+                        startIcon={<EditNoteIcon />}
+                    >
+                        Guardar anotación
                     </Button>
                 </DialogActions>
             </Dialog>
