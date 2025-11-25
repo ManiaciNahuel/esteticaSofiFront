@@ -4,6 +4,7 @@ import TopBar from "./components/TopBar";
 import CalendarPage from "./pages/CalendarPage";
 import StockPage from "./pages/StockPage";
 import CashPage from "./pages/CashPage";
+import ServicesPage from "./pages/ServicesPage";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
             <Route path="/" element={<CalendarPage />} />
             <Route path="/stock" element={<StockPage />} />
             <Route path="/caja" element={<CashPage />} />
+            <Route path="/servicios" element={<ServicesPage />} />
           </Routes>
         </Box>
       </Box>

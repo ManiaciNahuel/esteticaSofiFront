@@ -8,6 +8,7 @@ const tabs = [
     { label: "Turnos", path: "/" },
     { label: "Stock", path: "/stock" },
     { label: "Caja", path: "/caja" },
+    { label: "Servicios", path: "/servicios" },
 ];
 
 export default function TopBar() {
@@ -16,7 +17,7 @@ export default function TopBar() {
     const [employees, setEmployees] = useState([]);
     const [selected, setSelected] = useState(localStorage.getItem("employeeId") || "");
     const [tabIndex, setTabIndex] = useState(tabs.findIndex(t => t.path === location.pathname));
-    const [today, setToday] = useState(dayjs().format("YYYY-MM-DD"));
+    const [today] = useState(dayjs().format("YYYY-MM-DD"));
 
     useEffect(() => {
         getEmployees()
