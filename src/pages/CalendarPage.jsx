@@ -5,17 +5,18 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 // Removed problematic locale import
-import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid } from "@mui/material";
+import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid, Alert, IconButton } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import EditNoteIcon from "@mui/icons-material/EditNote";
+import CloseIcon from "@mui/icons-material/Close";
 import dayjs from "dayjs";
 import 'dayjs/locale/es';
 dayjs.locale('es');
 import { getAppointments, createAppointment, updateAppointment, deleteAppointment, searchAppointmentsByClient } from "../api/appointments";
 import { getServices } from "../api/services";
 import { getEmployees } from "../api/employees";
-import { createPayments, getPayments } from "../api/payments";
+import { createPayments, getPayments, deletePayment } from "../api/payments";
 import { getDailyNote, saveDailyNote, deleteDailyNote } from "../api/daily-notes";
 import { LocalizationProvider, DateTimePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -42,6 +43,7 @@ export default function CalendarPage() {
     const [dailyNote, setDailyNote] = useState("");
     const [dailyNotes, setDailyNotes] = useState({});
     const [selectedClient, setSelectedClient] = useState(null);
+    const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
     const [form, setForm] = useState({
         employee_id: localStorage.getItem("employeeId") || "",
         service_id: "",
@@ -259,7 +261,7 @@ export default function CalendarPage() {
         try {
             // Validar campos obligatorios
             if (!form.start || !form.end) {
-                alert("Por favor, completa las fechas de inicio y fin.");
+                showAlert("Por favor, completa las fechas de inicio y fin.", 'warning');
                 return;
             }
 
@@ -285,18 +287,20 @@ export default function CalendarPage() {
                 appointmentId = response.data.id;
             }
 
-            // Guardar pagos si hay alguno
-            if (payments.length > 0) {
-                await createPayments(appointmentId, payments);
+            // Guardar solo pagos nuevos (sin ID) si hay alguno
+            const newPayments = payments.filter(p => !p.id);
+            if (newPayments.length > 0) {
+                await createPayments(appointmentId, newPayments);
             }
 
             setOpen(false);
             setPayments([]);
             setNewPayment({});
             refreshEvents();
+            showAlert(form.id ? 'Turno actualizado correctamente' : 'Turno creado correctamente', 'success');
         } catch (err) {
             console.error(err);
-            alert("Error al guardar turno");
+            showAlert("Error al guardar turno", 'error');
         }
     };
 
@@ -310,7 +314,7 @@ export default function CalendarPage() {
         try {
             const response = await getDailyNote(today);
             setDailyNote(response.data?.content || "");
-        } catch (error) {
+        } catch {
             setDailyNote(""); // No hay nota para este día
         }
     };
@@ -335,9 +339,10 @@ export default function CalendarPage() {
             setNoteDialogOpen(false);
             setDailyNote("");
             setSelectedDate(null);
+            showAlert('Anotación guardada correctamente', 'success');
         } catch (error) {
             console.error("Error al guardar la anotación:", error);
-            alert("Error al guardar la anotación");
+            showAlert("Error al guardar la anotación", 'error');
         }
     };
 
@@ -353,9 +358,10 @@ export default function CalendarPage() {
             await deleteAppointment(form.id);
             setOpen(false);
             refreshEvents();
+            showAlert('Turno eliminado correctamente', 'success');
         } catch (err) {
             console.error(err);
-            alert("Error al eliminar turno");
+            showAlert("Error al eliminar turno", 'error');
         }
     };
 
@@ -380,7 +386,7 @@ export default function CalendarPage() {
         } catch (err) {
             console.error("Error al mover turno:", err);
             info.revert(); // vuelve el evento a su lugar si falla
-            alert("No se pudo actualizar el turno");
+            showAlert("No se pudo actualizar el turno", 'error');
         }
     };
 
@@ -425,7 +431,7 @@ export default function CalendarPage() {
     // Función para buscar turnos por cliente
     const handleClientSearch = async () => {
         if (!searchTerm.trim()) {
-            alert("Por favor ingrese un nombre para buscar");
+            showAlert("Por favor ingrese un nombre para buscar", 'warning');
             return;
         }
 
@@ -435,7 +441,7 @@ export default function CalendarPage() {
             setSearchResults(response.data || []);
         } catch (error) {
             console.error("Error al buscar turnos:", error);
-            alert("Error al realizar la búsqueda");
+            showAlert("Error al realizar la búsqueda", 'error');
             setSearchResults([]);
         } finally {
             setIsSearching(false);
@@ -484,8 +490,31 @@ export default function CalendarPage() {
         };
     }, [allEvents]);
 
+    const showAlert = (message, severity = 'info') => {
+        setAlert({ open: true, message, severity });
+        setTimeout(() => setAlert({ open: false, message: '', severity: 'info' }), 4000);
+    };
+
     return (
         <Box sx={{ position: "relative", p: 1 }}>
+            {/* Alert/Toast */}
+            {alert.open && (
+                <Alert 
+                    severity={alert.severity} 
+                    sx={{ 
+                        position: 'fixed',
+                        top: 24,
+                        right: 24,
+                        zIndex: 9999,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        borderRadius: 2
+                    }} 
+                    onClose={() => setAlert({ ...alert, open: false })}
+                >
+                    {alert.message}
+                </Alert>
+            )}
+
             <FullCalendar
                 key="calendar-main" // Add stable key to prevent full re-renders
                 plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -665,9 +694,25 @@ export default function CalendarPage() {
                     color: 'grey.800',
                     textAlign: 'left',
                     borderBottom: '1px solid',
-                    borderColor: 'rgba(59, 130, 246, 0.2)'
+                    borderColor: 'rgba(59, 130, 246, 0.2)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                 }}>
-                    {form.id ? '✏️ Editar Turno' : '➕ Nuevo Turno'}
+                    <span>{form.id ? '✏️ Editar Turno' : '➕ Nuevo Turno'}</span>
+                    <IconButton
+                        onClick={() => setOpen(false)}
+                        size="small"
+                        sx={{
+                            color: 'grey.500',
+                            '&:hover': {
+                                color: 'grey.700',
+                                bgcolor: 'rgba(0,0,0,0.04)'
+                            }
+                        }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
                 </DialogTitle>
                 <DialogContent sx={{
                     mt: 3,
@@ -1064,7 +1109,7 @@ export default function CalendarPage() {
                                             📋 Pagos Registrados
                                         </Box>
                                         {Array.isArray(payments) ? payments.map((p, i) => (
-                                            <Box key={i} sx={{
+                                            <Box key={p.id || `new-${i}`} sx={{
                                                 display: "flex",
                                                 justifyContent: "space-between",
                                                 alignItems: "center",
@@ -1109,9 +1154,26 @@ export default function CalendarPage() {
                                                         size="small"
                                                         color="error"
                                                         variant="outlined"
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             const currentPayments = Array.isArray(payments) ? payments : [];
-                                                            setPayments(currentPayments.filter((_, index) => index !== i));
+                                                            
+                                                            try {
+                                                                // Si el pago tiene ID, eliminarlo de la base de datos
+                                                                if (p.id) {
+                                                                    await deletePayment(p.id);
+                                                                    showAlert('Pago eliminado correctamente', 'success');
+                                                                } else {
+                                                                    showAlert('Pago removido de la lista', 'info');
+                                                                }
+                                                                
+                                                                // Eliminar del estado local
+                                                                const newPayments = currentPayments.filter((_, index) => index !== i);
+                                                                setPayments(newPayments);
+                                                                
+                                                            } catch (error) {
+                                                                console.error('Error al eliminar pago:', error);
+                                                                showAlert('Error al eliminar el pago. Por favor, intenta nuevamente.', 'error');
+                                                            }
                                                         }}
                                                         sx={{
                                                             minWidth: 32,
@@ -1140,7 +1202,8 @@ export default function CalendarPage() {
                     bgcolor: 'grey.50',
                     borderTop: '1px solid',
                     borderColor: 'grey.200',
-                    gap: 2
+                    gap: 2,
+                    justifyContent: form.id ? 'space-between' : 'flex-end'
                 }}>
                     {form.id && (
                         <Button
@@ -1148,33 +1211,25 @@ export default function CalendarPage() {
                             variant="outlined"
                             onClick={handleDelete}
                             sx={{
-                                mr: "auto",
                                 borderRadius: 2,
                                 px: 3,
-                                py: 1,
+                                py: 1.2,
                                 fontWeight: 600,
+                                fontSize: '0.95rem',
                                 borderWidth: 2,
+                                boxShadow: '0 2px 8px rgba(244, 67, 54, 0.15)',
                                 '&:hover': {
-                                    borderWidth: 2
-                                }
+                                    borderWidth: 2,
+                                    boxShadow: '0 4px 12px rgba(244, 67, 54, 0.2)',
+                                    transform: 'translateY(-1px)'
+                                },
+                                transition: 'all 0.2s ease-in-out'
                             }}
                             startIcon={<span>🗑️</span>}
                         >
                             Eliminar
                         </Button>
                     )}
-                    <Button
-                        onClick={() => setOpen(false)}
-                        sx={{
-                            borderRadius: 2,
-                            px: 3,
-                            py: 1,
-                            fontWeight: 600,
-                            color: 'grey.600'
-                        }}
-                    >
-                        Cancelar
-                    </Button>
                     <Button
                         variant="contained"
                         onClick={handleSave}
@@ -1196,7 +1251,7 @@ export default function CalendarPage() {
                         }}
                         startIcon={<span>{form.id ? '💾' : '➕'}</span>}
                     >
-                        {form.id ? "Guardar cambios" : "Crear turno"}
+                        {form.id ? "Guardar" : "Crear turno"}
                     </Button>
                 </DialogActions>
 
