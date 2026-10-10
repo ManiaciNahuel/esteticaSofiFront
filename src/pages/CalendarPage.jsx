@@ -5,7 +5,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 // Removed problematic locale import
-import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid, Alert, IconButton } from "@mui/material";
+import { Box, Fab, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Button, Grid, Alert, IconButton, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import SearchIcon from "@mui/icons-material/Search";
 import EditNoteIcon from "@mui/icons-material/EditNote";
@@ -23,6 +23,24 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import ClientSearchAutocomplete from "../components/ClientSearchAutocomplete";
 import './CalendarPage.scss'; // Import SCSS styles
 
+
+const LUNCH_MINUTES = 30;
+
+const mapAppointmentToEvent = (a) => {
+    const blocked = a.kind === "LUNCH";
+    return {
+        id: a.id,
+        title: blocked
+            ? `🍽️ ALMUERZO - ${a.employee_name || ""}`
+            : `${a.client_name || "Cliente"} - ${a.service_name}`,
+        start: a.starts_at,
+        end: a.ends_at,
+        backgroundColor: a.employee_color || "#f48fb1",
+        borderColor: a.employee_color || "#f48fb1",
+        classNames: blocked ? ["event-break"] : [],
+        extendedProps: { ...a }
+    };
+};
 
 export default function CalendarPage() {
     const [events, setEvents] = useState([]);
@@ -45,6 +63,7 @@ export default function CalendarPage() {
     const [selectedClient, setSelectedClient] = useState(null);
     const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
     const [form, setForm] = useState({
+        kind: "APPOINTMENT",
         employee_id: localStorage.getItem("employeeId") || "",
         service_id: "",
         client_name: "",
@@ -62,15 +81,7 @@ export default function CalendarPage() {
             try {
                 const response = await axios.get("/appointments");
                 const dataArray = Array.isArray(response.data) ? response.data : [];
-                const mappedEvents = dataArray.map(a => ({
-                    id: a.id,
-                    title: `${a.client_name || "Cliente"} - ${a.service_name}`,
-                    start: a.starts_at,
-                    end: a.ends_at,
-                    backgroundColor: a.employee_color || "#f48fb1",
-                    borderColor: a.employee_color || "#f48fb1",
-                    extendedProps: { ...a }
-                }));
+                const mappedEvents = dataArray.map(mapAppointmentToEvent);
                 setAllEvents(mappedEvents); // Store all events
                 setEvents(mappedEvents); // Initialize visible events
             } catch (error) {
@@ -102,15 +113,7 @@ export default function CalendarPage() {
             const to = dayjs(e).format("YYYY-MM-DD");
             const { data } = await getAppointments(from, to);
             const dataArray = Array.isArray(data) ? data : [];
-            const mapped = dataArray.map(a => ({
-                id: a.id,
-                title: `${a.client_name || "Cliente"} - ${a.service_name}`,
-                start: a.starts_at,
-                end: a.ends_at,
-                backgroundColor: a.employee_color || "#f48fb1",
-                borderColor: a.employee_color || "#f48fb1",
-                extendedProps: { ...a }
-            }));
+            const mapped = dataArray.map(mapAppointmentToEvent);
             setAllEvents(mapped); // Update allEvents instead of events
 
             // Apply current filter if there's one
@@ -222,6 +225,7 @@ export default function CalendarPage() {
 
     const handleDateSelect = (info) => {
         setForm({
+            kind: "APPOINTMENT",
             employee_id: localStorage.getItem("employeeId") || "",
             service_id: "",
             client_name: "",
@@ -236,6 +240,25 @@ export default function CalendarPage() {
         setPayments([]);
         setNewPayment({});
         setOpen(true);
+    };
+
+    const isBlock = form.kind === "LUNCH";
+
+    const handleKindChange = (kind) => {
+        if (!kind) return;
+        const start = form.start ? dayjs(form.start) : dayjs();
+        const minutes = kind === "LUNCH" ? LUNCH_MINUTES : (form.final_duration_minutes || 60);
+        setForm({
+            ...form,
+            kind,
+            service_id: kind === "APPOINTMENT" ? form.service_id : "",
+            client_name: kind === "APPOINTMENT" ? form.client_name : "",
+            client_phone: kind === "APPOINTMENT" ? form.client_phone : "",
+            final_price: kind === "APPOINTMENT" ? form.final_price : "",
+            final_duration_minutes: kind === "APPOINTMENT" ? form.final_duration_minutes : minutes,
+            start: start.format("YYYY-MM-DDTHH:mm:ss"),
+            end: start.add(minutes, "minute").format("YYYY-MM-DDTHH:mm:ss"),
+        });
     };
 
     const handleServiceChange = (id) => {
@@ -265,12 +288,18 @@ export default function CalendarPage() {
                 return;
             }
 
+            if (isBlock && !form.employee_id) {
+                showAlert("Elegí la profesional.", 'warning');
+                return;
+            }
+
             const payload = {
+                kind: form.kind || "APPOINTMENT",
                 employee_id: Number(form.employee_id),
-                client: { full_name: form.client_name, phone: form.client_phone },
-                service_id: Number(form.service_id),
-                final_price: form.final_price,
-                final_duration_minutes: form.final_duration_minutes,
+                client: isBlock ? null : { full_name: form.client_name, phone: form.client_phone },
+                service_id: isBlock ? null : Number(form.service_id),
+                final_price: form.final_price === "" ? null : form.final_price,
+                final_duration_minutes: form.final_duration_minutes === "" ? null : form.final_duration_minutes,
                 notes: form.notes,
                 starts_at: form.start,
                 ends_at: form.end,
@@ -394,6 +423,7 @@ export default function CalendarPage() {
         const turno = info.event.extendedProps;
         setForm({
             id: turno.id,
+            kind: turno.kind || "APPOINTMENT",
             employee_id: turno.employee_id,
             service_id: turno.service_id,
             client_name: turno.client_name || "",
@@ -452,6 +482,7 @@ export default function CalendarPage() {
     const handleSearchResultClick = (appointment) => {
         setForm({
             id: appointment.id,
+            kind: appointment.kind || "APPOINTMENT",
             employee_id: appointment.employee_id,
             service_id: appointment.service_id,
             client_name: appointment.client_name || "",
@@ -575,6 +606,7 @@ export default function CalendarPage() {
                     sx={{ position: "fixed", bottom: 24, right: 24, boxShadow: 4 }}
                     onClick={() => {
                         setForm({
+                            kind: "APPOINTMENT",
                             employee_id: localStorage.getItem("employeeId") || "",
                             service_id: "",
                             client_name: "",
@@ -699,7 +731,7 @@ export default function CalendarPage() {
                     justifyContent: 'space-between',
                     alignItems: 'center'
                 }}>
-                    <span>{form.id ? '✏️ Editar Turno' : '➕ Nuevo Turno'}</span>
+                    <span>{form.id ? (isBlock ? '✏️ Editar almuerzo' : '✏️ Editar Turno') : '➕ Nuevo Turno'}</span>
                     <IconButton
                         onClick={() => setOpen(false)}
                         size="small"
@@ -720,6 +752,19 @@ export default function CalendarPage() {
                     pb: 2,
                     bgcolor: 'rgba(248, 250, 252, 0.6)'
                 }}>
+                    {!form.id && (
+                        <ToggleButtonGroup
+                            exclusive
+                            fullWidth
+                            color="primary"
+                            value={form.kind || "APPOINTMENT"}
+                            onChange={(_, value) => handleKindChange(value)}
+                            sx={{ mb: 3, bgcolor: 'white' }}
+                        >
+                            <ToggleButton value="APPOINTMENT">💅 Turno</ToggleButton>
+                            <ToggleButton value="LUNCH">🍽️ Almuerzo</ToggleButton>
+                        </ToggleButtonGroup>
+                    )}
                     <Grid container spacing={3}>
                         {/* Sección: Info Básica */}
                         <Grid item xs={12} sx={{
@@ -784,6 +829,7 @@ export default function CalendarPage() {
                                         </TextField>
                                     </Grid>
 
+                                    {!isBlock && (<>
                                     <Grid item xs={12}>
                                         <TextField
                                             select
@@ -829,6 +875,7 @@ export default function CalendarPage() {
                                             }}
                                         />
                                     </Grid>
+                                    </>)}
                                 </Grid>
                             </Box>
                         </Grid>
@@ -906,6 +953,8 @@ export default function CalendarPage() {
                                         <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
                                             <DateTimePicker
                                                 label="⏰ Fin"
+                                                disabled={isBlock}
+                                                disabled={form.kind === "LUNCH"}
                                                 value={form.end ? dayjs(form.end) : dayjs().add(1, "hour")}
                                                 format="DD/MM/YYYY HH:mm"
                                                 onChange={(newValue) =>
@@ -929,6 +978,7 @@ export default function CalendarPage() {
                                         </LocalizationProvider>
                                     </Grid>
 
+                                    {!isBlock && (<>
                                     <Grid item xs={6}>
                                         <TextField
                                             label="💰 Precio"
@@ -962,6 +1012,7 @@ export default function CalendarPage() {
                                         />
                                     </Grid>
 
+                                    </>)}
                                     <Grid item xs={12}>
                                         <TextField
                                             label="📋 Notas"
@@ -982,6 +1033,7 @@ export default function CalendarPage() {
                             </Box>
                         </Grid>
 
+                        {!isBlock && (<>
                         {/* Sección: Pagos */}
                         <Grid item xs={12} sx={{
                             minWidth: '100%',
@@ -1193,6 +1245,7 @@ export default function CalendarPage() {
                             </Box>
                         </Grid>
 
+                        </>)}
                     </Grid>
                 </DialogContent>
 
@@ -1251,7 +1304,7 @@ export default function CalendarPage() {
                         }}
                         startIcon={<span>{form.id ? '💾' : '➕'}</span>}
                     >
-                        {form.id ? "Guardar" : "Crear turno"}
+                        {form.id ? "Guardar" : isBlock ? "Crear almuerzo" : "Crear turno"}
                     </Button>
                 </DialogActions>
 
